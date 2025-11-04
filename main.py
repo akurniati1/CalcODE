@@ -5,56 +5,42 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 ICON = ROOT / "icon.png"
+st.set_page_config(page_icon=str(ICON), layout="wide")
 
-assert ICON.exists(), f"Image not found: {ICON}"
+OPTIONS = ["Home", "Overview ODE", "ODE Solver"]
 
-st.set_page_config(
-    page_title="CalcODE — ODE Solver",
-    page_icon=str(ICON),
-    layout="wide"
-)
+# --- INIT state
+st.session_state.setdefault("active_menu", "Home")
+st.session_state.setdefault("_menu_ver", 0)
 
-def tune_layout(min_sidebar_px=280):
-    st.markdown(f"""
-    <style>
-    .main .block-container {{ max-width: 100% !important; padding: 0 2rem; }}
+# --- Tangkap redirect SEBELUM render menu
+if "_route_to" in st.session_state:
+    st.session_state["active_menu"] = st.session_state.pop("_route_to")
+    # paksa widget menu dibuat ulang agar highlight ikut pindah
+    st.session_state["_menu_ver"] += 1
 
-    /* Sidebar width */
-    [data-testid="stSidebar"][aria-expanded="true"] {{
-        min-width: {min_sidebar_px}px !important; flex-shrink: 0 !important;
-    }}
-    [data-testid="stSidebar"][aria-expanded="false"] {{
-        width: 0 !important; min-width: 0 !important; transform: translateX(-100%);
-    }}
+def streamlit_menu():
+    default_idx = OPTIONS.index(st.session_state["active_menu"])
+    # key dinamis: berubah bila ada redirect
+    menu_key = f"main_menu_v{st.session_state['_menu_ver']}"
+    with st.sidebar:
+        selected = option_menu(
+            "Main Menu",
+            OPTIONS,
+            icons=["house", "book", "calculator"],
+            menu_icon="cast",
+            default_index=default_idx,
+            key=menu_key,  # <- dipaksa re-create saat _menu_ver berubah
+            styles={
+                "nav-link": {"--hover-color": "#E7F1FF"},
+                "nav-link-selected": {"background-color": "#0D6EFD", "color": "white"},
+            },
+        )
+    # simpan pilihan user biasa
+    st.session_state["active_menu"] = selected
+    return selected
 
-    /* Sidebar content stays in normal flow, reduce the top padding */
-    [data-testid="stSidebarContent"] {{
-        padding-top: 6px !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-
-def streamlit_menu(example=1):
-    if example == 1:
-        tune_layout(min_sidebar_px=280)
-
-        with st.sidebar:
-            selected = option_menu(
-                "Main Menu",
-                ["Home", "Overview ODE", "ODE Solver"],
-                icons=["house", "book", "calculator"],
-                menu_icon="cast",
-                default_index=0,
-                styles={
-                    "nav-link": {"--hover-color": "#E7F1FF"},
-                    "nav-link-selected": {"background-color": "#0D6EFD", "color": "white"},
-                },
-            )
-
-        return selected
-
-selected = streamlit_menu(example=1)
+selected = streamlit_menu()
 
 if selected == "Home":
     home.app()
