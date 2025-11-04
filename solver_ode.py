@@ -20,6 +20,38 @@ COMMON_FUNCS = {
     "pi": sp.pi, "E": sp.E,
 }
 
+def _normalize_ops(s: str) -> str:
+    """Normalisasi simbol operator non-ASCII → ASCII agar deteksi konsisten."""
+    if not isinstance(s, str):
+        return s
+    return (s
+        # variasi minus / dash
+        .replace("−", "-")   # U+2212 minus sign
+        .replace("–", "-")   # en dash
+        .replace("—", "-")   # em dash
+        .replace("﹣", "-")   # small hyphen-minus
+        .replace("－", "-")   # fullwidth hyphen-minus
+        # perkalian
+        .replace("×", "*")   # multiplication sign
+        .replace("⋅", "*")   # dot operator
+        .replace("·", "*")   # middle dot
+        .replace("∙", "*")   # bullet operator
+        .replace("＊", "*")  # fullwidth asterisk
+        # pembagian
+        .replace("÷", "/")   # division sign
+        .replace("／", "/")  # fullwidth slash
+        # pangkat / caret
+        .replace("＾", "^")  # fullwidth caret
+        # persen
+        .replace("％", "%")  # fullwidth percent
+        # tanda tambah
+        .replace("＋", "+")  # fullwidth plus
+        # kurung
+        .replace("（", "(")  # fullwidth (
+        .replace("）", ")")  # fullwidth )
+    )
+
+
 def to_pyint(x, default=None):
     """
     Convert to int. If it fails:
@@ -423,6 +455,11 @@ def solve_bvp_general_dn(order: int,
 
 
 def app():
+    st.set_page_config(
+        page_title="CalcODE — ODE Solver",
+        layout="wide"
+    )
+
     st.title("ODE Solver")
 
     # CSS
@@ -467,13 +504,34 @@ def app():
     # Dependent and independent variable names
     c1, c2 = st.columns([1, 1])
     with c1:
-        dep_name   = st.text_input("Dependent variable", value="u", key="ode_dep")
+        dep_name   = st.text_input("Dependent variable", 
+                                   value="u", 
+                                   key="ode_dep",
+                                   help="The function being solved for, e.g., u(t), y(x).")
+        
+        # Validate dependent variable name
+        if not dep_name.strip():
+            st.error("Dependent variable cannot be blank. Please enter a valid name (e.g., u, y).")
+            st.stop()
+        if not re.fullmatch(r"[A-Za-z]+", dep_name.strip()):
+            st.error("Dependent variable must contain letters only (e.g., 'u', 'y'). No numbers, spaces, or symbols.")
+            st.stop()
+
     with c2:
         indep_name = st.text_input(
             "Independent variable", 
             value="t", 
-            key="ode_indep"
+            key="ode_indep",
+            help="The variable with respect to which differentiation is done, e.g., t, x. Note: must be different from the dependent variable."
             )
+
+        # Validate independent variable name
+        if not indep_name.strip():
+            st.error("Independent variable cannot be blank. Please enter a valid name (e.g., t, x).")
+            st.stop()
+        if not re.fullmatch(r"[A-Za-z]+", indep_name.strip()):
+            st.error("Independent variable must contain letters only (e.g., 't', 'x'). No numbers, spaces, or symbols.")
+            st.stop()
 
     # Validate variable names between dep and indep    
     _dep = dep_name.strip()
@@ -485,12 +543,109 @@ def app():
             f"Change one of them (e.g., {_dep or 'y'} vs {_ind or 't'})."
         )
         st.stop()
+    
 
     # LHS and RHS of the ODE
     c1, c2, c3 = st.columns([4, 1, 4])
     with c1:
-        left_side  = st.text_input("Left-hand side (LHS)", value="u'' - u' + u")
+        left_side  = st.text_input("Left-hand side (LHS)", 
+                                   value="u'' - u' + u",
+                                   help="Enter the left-hand side of the ODE, e.g., u'' + 2*u' + u.")
 
+        # Validate LHS derivatives
+        _lhs = left_side.strip()
+
+        if _lhs == "":
+            st.error("LHS cannot be blank. Please enter a valid expression.")
+            st.stop()
+        if _lhs and re.fullmatch(r"[+\-*/%^()\s\.]+", _lhs):
+                st.error("LHS cannot contain only operators or parentheses.")
+                st.stop()
+        
+        # Missing operator detection (e.g., 2t, u'u)
+        _func_names = "|".join(map(re.escape, COMMON_FUNCS.keys())) or "___NONE___"
+
+        missing_op_pattern = re.compile(
+            rf"""
+            (?:
+                # 1) Number diikuti huruf atau '('  → 2t, 3(x+1)
+                \d(?:\.\d+)?\s*(?=[A-Za-z(])
+
+            | # 2) Var (bukan fungsi terdaftar) diikuti '('  → t(x+1)
+                \b(?!(?:{_func_names})\b)[A-Za-z]\w*\s*(?=\()
+
+            | # 3) Var diikuti var dengan spasi  → u v
+                \b[A-Za-z]\w*\s+(?=[A-Za-z]\w*)
+
+            | # 4) ')' diikuti huruf/angka/'('  → )(, )x, )2, )(
+                \)\s*(?=[A-Za-z0-9(])
+
+            | # 5) Turunan prime diikuti huruf/'('  → u'v, u'(x)
+                {re.escape(_dep)}\s*'+\s*(?=[A-Za-z(])
+            )
+            """,
+            re.VERBOSE,
+        )
+
+        if _lhs and re.search(missing_op_pattern, _lhs):
+            st.error(
+                "It seems there might be missing operators between terms in the LHS. "
+                "For example, use '2*t' instead of '2t', or 'u'*u' instead of 'u'u'."
+            )
+            st.stop()
+        
+        lhs_norm = _normalize_ops(_lhs)
+        if "_" in lhs_norm:
+            st.error(
+                "LHS contains unsupported symbols: _ "
+            )
+            st.stop()
+        if "," in lhs_norm:
+            st.error(
+                "LHS contains unsupported symbols: , "
+            )
+            st.stop()
+
+        _allowed_lhs = r"[A-Za-z0-9_+\-*/%^(),.'\s]*"
+
+        if not re.fullmatch(_allowed_lhs, lhs_norm):
+            bad_chars = sorted(set(re.findall(r"[^A-Za-z0-9_+\-*/%^(),.'\s]", lhs_norm)))
+            st.error(
+                "LHS contains unsupported symbols: "
+                + " ".join(f"**{c}**" for c in bad_chars)
+            )
+            st.stop()
+        
+        def _paren_balance_ok(s: str) -> bool:
+            """True jika kurung '(' dan ')' seimbang dan urutannya valid."""
+            bal = 0
+            for ch in s:
+                if ch == "(":
+                    bal += 1
+                elif ch == ")":
+                    bal -= 1
+                    if bal < 0:  # ada ')' lebih dulu tanpa '(' pembuka
+                        return False
+            return bal == 0  # harus habis
+        
+        if not _paren_balance_ok(lhs_norm):
+            st.error(
+                "Unmatched parentheses on RHS. Make sure every '(' has a matching ')', "
+                "and that ')' does not appear before its matching '('."
+            )
+            st.stop()
+        if re.search(r"\(\s*\)", lhs_norm):
+            st.error("Empty parentheses '()' are not allowed on LHS. Put a value inside or remove the parentheses.")
+            st.stop()
+        if re.search(r"[+\-*/%^]\s*(?:$|\)|,)", lhs_norm):
+            st.error(
+                "LHS ends with an operator or has an operator without a following term. "
+                "Please complete the expression."
+            )
+            st.stop()
+        
+
+        
         # Validate all derivatives use the same dependent variable
         deriv_vars = _find_derivative_vars(left_side, dep_name, indep_name)
         bad_vars = {v for v in deriv_vars if v != dep_name}
@@ -502,6 +657,14 @@ def app():
                 f"- Found derivative(s) of: **{', '.join(sorted(bad_vars))}**\n\n"
                 "Please rewrite the LHS so that all derivatives use the same dependent variable, "
                 f"e.g., {dep_name}', {dep_name}'' or Leibniz form d^n {dep_name}/d{indep_name}^n."
+            )
+            st.stop()
+        
+        # Validate at least one derivative of the dependent variable is present
+        if dep_name not in deriv_vars:
+            st.error(
+                "No derivatives of the dependent variable were detected on the LHS.\n"
+                f"Please include at least one derivative of **{dep_name}** (e.g., {dep_name}', {dep_name}'', etc.) "
             )
             st.stop()
 
@@ -524,7 +687,9 @@ def app():
     with c2:
         st.markdown("<div style='text-align:center;font-size:24px;margin-top:26px;'>=</div>", unsafe_allow_html=True)
     with c3:
-        right_side = st.text_input("Right-hand side (RHS)", value="cos(t)*omega")
+        right_side = st.text_input("Right-hand side (RHS)", 
+                                   value="cos(t)*omega",
+                                   help="The right-hand side of the ODE, e.g., sin(t) + alpha.")
 
         if _rhs_has_derivative(right_side, dep_name.strip(), indep_name.strip()):
             st.error(
@@ -533,6 +698,61 @@ def app():
                 f"Please move any derivative terms (e.g., {dep_name}', {dep_name}'', ...) to the left-hand side."
             )
             st.stop()
+        
+        # Validate RHS expression
+        _rhs = right_side.strip()
+
+        if _rhs == "":
+            st.error("RHS cannot be blank. Please enter a valid expression.")
+            st.stop()
+        if _rhs and re.fullmatch(r"[+\-*/%^()\s\.]+", _rhs):
+                st.error("RHS cannot contain only operators or parentheses.")
+                st.stop()
+        if _rhs and re.search(missing_op_pattern, _rhs):
+            st.error(
+                "It seems there might be missing operators between terms in the RHS. "
+                "For example, use '2*t' instead of '2t', or 'u'*u' instead of 'u'u'."
+            )
+            st.stop()
+        
+        rhs_norm = _normalize_ops(_rhs)
+
+        if "_" in rhs_norm:
+            st.error(
+                "RHS contains unsupported symbols: _ "
+            )
+            st.stop()
+        if "," in rhs_norm:
+            st.error(
+                "RHS contains unsupported symbols: , "
+            )
+            st.stop()
+        if not re.fullmatch(r"[A-Za-z0-9_+\-*/%^().\s]*", rhs_norm):
+            bad_chars = sorted(set(re.findall(r"[^A-Za-z0-9_+\-*/%^(),.\s]", rhs_norm)))
+            st.error(
+                "RHS contains unsupported symbols: "
+                + " ".join(f"**{c}**" for c in bad_chars)
+            )
+            st.stop()
+        if not _paren_balance_ok(rhs_norm):
+            st.error(
+                "Unmatched parentheses on RHS. Make sure every '(' has a matching ')', "
+                "and that ')' does not appear before its matching '('."
+            )
+            st.stop()
+        if re.search(r"\(\s*\)", rhs_norm):
+            st.error("Empty parentheses '()' are not allowed on RHS. Put a value inside or remove the parentheses.")
+            st.stop()
+        if re.search(r"[+\-*/%^]\s*(?:$|\)|,)", rhs_norm):
+            st.error(
+                "LHS ends with an operator or has an operator without a following term. "
+                "Please complete the expression."
+            )
+            st.stop()
+
+
+
+    
 
     # Optional Parameter values
     cand_params = detect_params_for_ui(left_side, right_side, dep_name, indep_name)
@@ -620,15 +840,16 @@ def app():
         # Input IVP or BVP conditions
         if cond_type == "Initial Value Problem (IVP)":
             # Set initial point t0
+            seed_ic = float(st.session_state.get("t_ic", t0))
+            seed_ic = max(float(t0), min(float(t1), seed_ic))
+
             t_ic = st.number_input(
                 f"Initial point {indep_name}\u2080",
-                value=float(t0),
-                min_value=0.00,
+                value=seed_ic,
+                min_value=float(t0),
+                max_value=float(t1),
                 step=0.01, format="%.2f", key="t_ic"
             )
-            if not (t0 <= t_ic <= t1):
-                st.error(f"{indep_name}\u2080 must lie inside the domain: {t0} ≤ {indep_name}\u2080 ≤ {t1}.")
-                st.stop()
                 
             if build_error is None and n_order is not None:
                 int_n = max(1, to_pyint(n_order))
@@ -863,13 +1084,12 @@ def app():
 
     
     #Solution Settings
-    st.subheader("Solver Method and Settings")
 
     # Catalogs
     IVP_METHODS = [
         ("RK45 (Dormand–Prince)", "RK45"),
         ("RK23 (Bogacki–Shampine)", "RK23"),
-        ("DOP853 (explicit high-order)", "DOP853"),
+        #("DOP853 (explicit high-order)", "DOP853"),
         ("Radau (implicit, stiff)", "Radau"),
         ("BDF (implicit, stiff)", "BDF"),
         ("LSODA (auto stiff/nonstiff)", "LSODA"),
@@ -882,6 +1102,8 @@ def app():
     ]
 
     if cond_type == "Initial Value Problem (IVP)":
+        st.subheader("Solver Method and Settings")
+        
         method_options = IVP_METHODS
         method_help = "Choose a solver method suitable for IVP. RK45 is a good general-purpose choice."
         
