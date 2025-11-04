@@ -3,6 +3,11 @@ import sympy as sp
 import numpy as np
 
 def app():
+    st.set_page_config(
+        page_title="CalcODE — Overview of ODEs",
+        layout="wide"
+    )
+
     st.title("Overview of Ordinary Differential Equations (ODEs)")
 
     st.markdown(
@@ -62,14 +67,3 @@ def app():
     st.markdown("A general solution form is:")
     st.latex(r"y(x) = A\sin(x)")
     st.markdown("_Common numerical methods:_ Shooting Method, Finite Difference Method.")
-
-    # ---------- About This Calculator ----------
-    st.subheader("About This Calculator")
-    st.markdown(
-        "This website allows users to:\n"
-        "1. Choose the problem type (IVP or BVP),\n"
-        "2. Enter the differential equation and conditions,\n"
-        "3. Select a numerical method,\n"
-        "4. Visualize the solution instantly.\n\n"
-        "It provides an interactive way to understand how ODEs behave and how numerical methods work in solving real-world problems."
-    )
