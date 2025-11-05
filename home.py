@@ -14,7 +14,6 @@ def app():
     )
 
     if st.button("Go to ODE Solver"):
-        # set flag ROUTE, jangan sentuh key widget langsung
         st.session_state["_route_to"] = "ODE Solver"
         st.rerun()
 
@@ -32,12 +31,12 @@ def app():
             height:100%;
             display:flex;
             flex-direction:column;
-            gap:6px;                 /* space between title, tag, desc */
+            gap:6px;                 
         }
         .method-title{
             font-weight:700;
             font-size:1.05rem;
-            line-height:1.2;         /* compact title line height */
+            line-height:1.2;         
             margin:0;
         }
         .method-tag{
@@ -46,16 +45,16 @@ def app():
             border-radius:999px;
             background:#F1F5F9;
             font-size:0.8rem;
-            line-height:1.2;         /* compact tag line height */
+            line-height:1.2;         
         }
         .method-desc{
             font-size:0.95rem;
-            line-height:1.45;        /* nicer paragraph line spacing */
+            line-height:1.45;        
             margin:0;
             white-space:normal;
             word-break:break-word;
         }
-        .method-desc p{ margin:0; } /* remove extra paragraph margins */
+        .method-desc p{ margin:0; } 
         </style>
         """,
         unsafe_allow_html=True
@@ -122,7 +121,7 @@ def app():
 
     # Footer
     st.divider()
-    f1, f2, f3 = st.columns([1, 1, 1])  # Tiga kolom dengan lebar sama
+    f1, f2, f3 = st.columns([1, 1, 1]) 
     with f1:
         st.markdown(
             """
