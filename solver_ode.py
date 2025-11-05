@@ -25,32 +25,31 @@ def _normalize_ops(s: str) -> str:
     if not isinstance(s, str):
         return s
     return (s
-        # variasi minus / dash
-        .replace("−", "-")   # U+2212 minus sign
-        .replace("–", "-")   # en dash
-        .replace("—", "-")   # em dash
-        .replace("﹣", "-")   # small hyphen-minus
-        .replace("－", "-")   # fullwidth hyphen-minus
-        # perkalian
-        .replace("×", "*")   # multiplication sign
-        .replace("⋅", "*")   # dot operator
-        .replace("·", "*")   # middle dot
-        .replace("∙", "*")   # bullet operator
-        .replace("＊", "*")  # fullwidth asterisk
-        # pembagian
-        .replace("÷", "/")   # division sign
-        .replace("／", "/")  # fullwidth slash
-        # pangkat / caret
-        .replace("＾", "^")  # fullwidth caret
-        # persen
-        .replace("％", "%")  # fullwidth percent
-        # tanda tambah
-        .replace("＋", "+")  # fullwidth plus
-        # kurung
-        .replace("（", "(")  # fullwidth (
-        .replace("）", ")")  # fullwidth )
+        # minus
+        .replace("−", "-")   
+        .replace("–", "-")   
+        .replace("—", "-")   
+        .replace("﹣", "-")   
+        .replace("－", "-")  
+        # times
+        .replace("×", "*")   
+        .replace("⋅", "*")   
+        .replace("·", "*")   
+        .replace("∙", "*")   
+        .replace("＊", "*")  
+        # divide
+        .replace("÷", "/")   
+        .replace("／", "/")  
+        # power
+        .replace("＾", "^")  
+        # percent
+        .replace("％", "%")  
+        # plus
+        .replace("＋", "+")  
+        # parentheses
+        .replace("（", "(")  
+        .replace("）", ")")  
     )
-
 
 def to_pyint(x, default=None):
     """
@@ -67,13 +66,12 @@ def to_pyint(x, default=None):
             raise ValueError(f"The value '{x}' cannot be converted to int")
         return int(default)
 
-
+# Convert prime-notation like u''', u'', u' into SymPy Derivative(u, (t, n))
 def _prime_to_derivative(expr_str: str, dep_name: str, indep_name: str) -> str:
     """
     Convert prime-notation like u''', u'', u' into SymPy Derivative(u, (t, n))
     Works for any number of primes.
     """
-    # dep_name diikuti satu/lebih tanda '
     pattern = rf"\b{re.escape(dep_name)}('+)"
     def repl(m):
         n = len(m.group(1))
@@ -83,6 +81,7 @@ def _prime_to_derivative(expr_str: str, dep_name: str, indep_name: str) -> str:
             return f"Derivative({dep_name}, ({indep_name}, {n}))"
     return re.sub(pattern, repl, expr_str)
 
+# Detect candidate symbolic parameters for UI
 def detect_params_for_ui(lhs, rhs, dep, indep):
     """
     Detect candidate symbolic as optional parameters from LHS & RHS,
@@ -101,14 +100,13 @@ def detect_params_for_ui(lhs, rhs, dep, indep):
         rexpr = parse_expr(rhs, local_dict=base_dict, evaluate=False)
 
         syms = (lexpr.free_symbols | rexpr.free_symbols)
-        exclude = {t, sp.Symbol(dep)}  # buang indep var dan 'u' telanjang jika ada
+        exclude = {t, sp.Symbol(dep)} 
         final = sorted([s for s in syms if s not in exclude], key=lambda s: s.name)
         return [s.name for s in final if s.name != dep]
     except Exception:
         return []
     
 # Detect and validate orders greater than 3
-# Converter up to order-3 (y''', y'', y') ---
 def leibniz_to_sympy(expr: str, dep_name: str, indep_name: str) -> str:
         e = expr
         # y''' -> Derivative(y(t),(t,3))
@@ -131,6 +129,7 @@ def leibniz_to_sympy(expr: str, dep_name: str, indep_name: str) -> str:
         )
         return e
 
+# Safe sympify with limited functions & symbols
 def _safe_sympify(expr_str: str):
         allowed = {
             "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
@@ -151,10 +150,10 @@ def _safe_sympify(expr_str: str):
 
         return sp.sympify(expr_str, locals=allowed)
 
+# Normalize prime variations to ASCII apostrophe (')
 def _normalize_primes(s: str) -> str:
             """
-            Samakan semua variasi prime ke tanda ASCII apostrophe (').
-            Contoh: ’ (U+2019), ′ (U+2032), ″ (U+2033), ‴ (U+2034) -> '
+            Convert all prime variations to ASCII apostrophe (').
             """
             return (s
                 .replace("’", "'")
@@ -163,12 +162,11 @@ def _normalize_primes(s: str) -> str:
                 .replace("‴", "'''")
             )
 
+# Find derivative variable names in LHS
 def _find_derivative_vars(lhs: str, dep_name: str, indep_name: str):
         """
-        Deteksi nama variabel yang muncul sebagai turunan:
-        1) Notasi prime: y', y'', y''' (boleh ada spasi sebelum prime, boleh diikuti kurung).
-        2) Notasi Leibniz: d^n y / d indep_name^n  (n >= 1).
-        Kembalikan set nama variabel yang jadi turunan.
+        Detect all variable names that appear in derivative notation in the given lhs string.
+        Return a set of variable names found.
         """
         vars_found = set()
         s = _normalize_primes(lhs)
@@ -177,27 +175,21 @@ def _find_derivative_vars(lhs: str, dep_name: str, indep_name: str):
         prime_pat = r"(?<![A-Za-z0-9_])([A-Za-z_]\w*)(?:\s*'{1,3})(?![A-Za-z0-9_])"
         for m in re.finditer(prime_pat, s):
             vars_found.add(m.group(1))
-
-        # Leibniz notation: d^n y / d t^n
-        # Examples: d^2 z / d t^2, d y / d t
-        # n may be omitted (assume 1)
+            
         indep_esc = re.escape(indep_name)
         leibniz_pat = (
             rf"d\^?\s*(\d+)?\s*([A-Za-z_]\w*)\s*/\s*d\s*{indep_esc}\^?\s*(\d+)?"
         )
         for m in re.finditer(leibniz_pat, s, flags=re.IGNORECASE):
             var = m.group(2)
-            # validate derivative order consistency (optional; here we just extract the variables)
             vars_found.add(var)
 
         return vars_found
 
+# Detect maximum order from text patterns
 def _max_order_heuristic(left_side: str, dep_name: str) -> int:
         """
-        Deteksi orde maksimum dari pola teks:
-          - Prime notation:  y', y'', y''', y'''' ...
-          - LaTeX style:     y^{(n)}
-          - SymPy style:     Derivative(y(t),(t,n))
+        Detect the maximum order of derivatives from text patterns in the left_side string.
         """
         max_ord = 1
         # Prime notation
@@ -232,9 +224,8 @@ def _infer_order_from_lhs(left_side: str, dep_name: str, indep_name: str) -> int
         except Exception:
             return 1
 
-# --- taruh di bagian utilitas (di atas app()) ---
+# Format number for LaTeX output
 def fmt_num_ltx(x, nd: int = 6) -> str:
-    """Format angka ringkas & aman untuk LaTeX."""
     try:
         xf = float(x)
         s = f"{xf:.{nd}g}"
@@ -246,12 +237,8 @@ def fmt_num_ltx(x, nd: int = 6) -> str:
     except Exception:
         return str(x)
 
-
+# Detect if RHS has derivative of dep_name w.r.t indep_name
 def _rhs_has_derivative(rhs_str: str, dep_name: str, indep_name: str) -> bool:
-    """
-    Return True jika RHS memuat turunan dep_name terhadap indep_name,
-    dideteksi via regex dan fallback parse (prime → Derivative).
-    """
     if not isinstance(rhs_str, str) or not rhs_str.strip():
         return False
 
@@ -259,45 +246,41 @@ def _rhs_has_derivative(rhs_str: str, dep_name: str, indep_name: str) -> bool:
     dep_esc = re.escape(dep_name)
     indep_esc = re.escape(indep_name)
 
-    # --- 1) PRIME notation: u', u'', u'''
+    # Prime notation: u', u'', u'''
     prime_pat = rf"(?<![A-Za-z0-9_]){dep_esc}\s*'{1,}(?![A-Za-z0-9_])"
     if re.search(prime_pat, s):
         return True
 
-    # --- 2) LEIBNIZ: d^n u / d t^n  (n bisa kosong)
+    # Leibniz notation: d^n u / d t^n
     leibniz_pat = rf"d\^?\s*\d*\s*{dep_esc}\s*/\s*d\s*{indep_esc}(?:\s*\^\s*\d+)?"
     if re.search(leibniz_pat, s, flags=re.IGNORECASE):
         return True
 
-    # --- 3) SYMPY-ish: Derivative(u(t), t) atau Derivative(u(t),(t,n))
+    # Sympy Derivative notation: Derivative(u(t), t) or Derivative(u(t), (t, n))
     sympy_der_pat = rf"Derivative\s*\(\s*{dep_esc}\s*\(\s*{indep_esc}\s*\)\s*,"
     if re.search(sympy_der_pat, s):
         return True
 
-    # --- 4) PARSE fallback: konversi prime -> Derivative, lalu cek atoms(Derivative)
+    # Try parsing with sympy
     try:
         t = sp.Symbol(indep_name)
         y = sp.Function(dep_name)(t)
         base = {indep_name: t, dep_name: y, "Derivative": sp.Derivative, **COMMON_FUNCS}
 
-        rhs_prep = _prime_to_derivative(s, dep_name, indep_name)  # hanya untuk deteksi
+        rhs_prep = _prime_to_derivative(s, dep_name, indep_name) 
         rexpr = parse_expr(rhs_prep, local_dict=base, evaluate=False)
 
         for d in rexpr.atoms(sp.Derivative):
-            # cek apakah derivatifnya memang derivatif dari y(t) terhadap t
             if d.expr == y:
-                # count variabel t di daftar turunan (support Derivative(y,(t,n)) & Derivative(y,t))
                 if any(var == t for var in d.variables):
                     return True
     except Exception:
-        # Jika parsing gagal, kita tidak memblokir; anggap tidak terdeteksi via parse
         pass
-
     return False
 
 
-        
-# Core: sytem for solve_ivp
+
+# Sytem for solve_ivp
 def build_rhs_from_input(
     left_expr_str,
     right_expr_str,
@@ -307,7 +290,7 @@ def build_rhs_from_input(
 ):
     params = params or {}
 
-    # ---------- 1) Basic symbols ----------
+    # Parse expressions
     t = sp.Symbol(indep_name)
     y_func = sp.Function(dep_name)(t)
 
@@ -316,7 +299,7 @@ def build_rhs_from_input(
     left_expr  = parse_expr(exprL, local_dict=local_dict, evaluate=False)
     right_expr = parse_expr(right_expr_str, local_dict=local_dict, evaluate=False)
 
-    # ---------- 2) Detect highest order ----------
+    # Detect highest derivative on LHS
     ders = sorted(left_expr.atoms(sp.Derivative),
                   key=lambda d: d.derivative_count if hasattr(d, "derivative_count") else 0)
     if not ders:
@@ -324,16 +307,15 @@ def build_rhs_from_input(
     highest_der = ders[-1]
     n = highest_der.derivative_count
 
-    # ---------- 3) Solve explicitly for y^(n) ----------
+    # Solve for highest derivative
     sol_list = sp.solve(sp.Eq(left_expr, right_expr), highest_der, dict=True)
     if not sol_list:
         raise ValueError(f"Cannot solve the ODE for {highest_der}. Make sure the ODE is linear in its highest derivative.")
     rhs_expr = sol_list[0][highest_der]
 
-    # ---------- (Optional) pretty LaTeX ----------
     ode_latex = sp.latex(sp.Eq(left_expr, right_expr), mode="equation")
 
-    # ---------- 4) Substitute y, y', ..., y^(n-1) => Y0..Y{n-1} ----------
+    # Substitute derivatives with Y0, Y1, ..., Yn-1
     n_int = max(1, to_pyint(n))
     Y = [sp.Symbol(f"Y{k}") for k in range(n_int)]
     subs_map = {y_func: Y[0]}
@@ -341,23 +323,23 @@ def build_rhs_from_input(
         subs_map[sp.Derivative(y_func, (t, k))] = Y[k]
     rhs_sub = rhs_expr.subs(subs_map)
 
-    # ---------- 5) Identify parameters & require values ----------
+    # Identify parameter symbols
     free_syms = rhs_sub.free_symbols.union(left_expr.free_symbols).union(right_expr.free_symbols)
     param_syms = sorted([s for s in free_syms if s != t and s not in Y], key=lambda s: s.name)
     param_names = tuple(s.name for s in param_syms)
 
-    # Pastikan semua param ada nilainya
+    # Check parameter values
     missing = [s.name for s in param_syms if s.name not in params]
     if missing:
         raise ValueError("Missing parameter values: " + ", ".join(missing))
 
     param_vals = [float(params[s.name]) for s in param_syms]
 
-    # ---------- 6) Numeric function ----------
+    # Lambdify RHS
     lamb_args = (t, *Y, *param_syms)
     g_num = sp.lambdify(lamb_args, rhs_sub, "numpy")
 
-    # ---------- 7) Build system ----------
+    # Define ODE system for solve_ivp
     def f(t_val, yvec):
         dydt = np.zeros_like(yvec, dtype=float)
         for k in range(n_int - 1):
@@ -367,8 +349,8 @@ def build_rhs_from_input(
 
     return f, n, param_names, ode_latex
 
-# ========= BVP utilities (place ABOVE app()) =========
 
+# System for solve_bvp
 def make_bvp_system(order: int, g: Callable):
     """
     Build first-order system Y' = F(x, Y) for an nth-order ODE y^(n) = g(x, y, y', ..., y^(n-1)).
@@ -376,12 +358,11 @@ def make_bvp_system(order: int, g: Callable):
     """
     assert order in (1, 2, 3), "Only orders 1–3 are supported"
     def fun(x, Y):
-        # Y shape: (order, m)
         dY = np.empty_like(Y)
-        # shift derivatives
+        
         if order > 1:
             dY[:-1] = Y[1:]
-        # last component from g
+        
         m = Y.shape[1]
         last = np.empty(m)
         if order == 1:
@@ -451,9 +432,9 @@ def solve_bvp_general_dn(order: int,
     x, Y0 = initial_guess_mesh(a, b, order, m=m, guess_y=guess_y)
     sol = solve_bvp(fun, bc, x, Y0, tol=tol, max_nodes=max_nodes)
     return sol
-# ========= end BVP utilities =========
 
 
+# Streamlit app
 def app():
     st.set_page_config(
         page_title="CalcODE — ODE Solver",
@@ -644,8 +625,6 @@ def app():
             )
             st.stop()
         
-
-        
         # Validate all derivatives use the same dependent variable
         deriv_vars = _find_derivative_vars(left_side, dep_name, indep_name)
         bad_vars = {v for v in deriv_vars if v != dep_name}
@@ -787,7 +766,6 @@ def app():
     ode_preview = None
     param_order = ()
     f_callable = None
-    missing_warn = tuple()
 
     try:
         f_callable, n_order, param_order, ode_preview = build_rhs_from_input(
@@ -893,7 +871,7 @@ def app():
             def _prime_str(k: int) -> str:
                 return f"{dep_name}{prime_map[k]}" if k <= 3 else f"{dep_name}^({k})"
 
-            # --- Option universe (orders 0..n-1 at both ends) ---
+            # Build options
             n_int = max(1, to_pyint(n_order))
             all_opts = []
             for k in range(n_int):
@@ -907,11 +885,11 @@ def app():
                 at = f"{indep_name}={t0}" if o["where"] == "a" else f"{indep_name}={t1}"
                 return f"{_prime_str(o['order'])}({at})"
 
-            # --- Persist previous picks ---
+            # Persist previous picks
             prev_selected = st.session_state.get("cond_multi_bvp", [])
             prev_selected = [sid for sid in prev_selected if sid in valid_ids]
 
-            # Jika sudah penuh sebelumnya, kunci opsi agar tidak bisa menambah (opsi=yang sudah dipilih saja)
+            # Mutate options to prevent removing when max reached
             options_now = valid_ids if len(prev_selected) < n_int else prev_selected
 
             st.markdown("**Select boundary conditions (choose exactly as many as the ODE order):**")
@@ -932,7 +910,7 @@ def app():
                 selected_ids = selected_ids[:n_int]
                 st.session_state["cond_multi_bvp"] = selected_ids
 
-            # --- Counter & feedback ---
+            # Feedback on remaining needed
             remaining = max(0, n_int - len(selected_ids))
             if len(selected_ids) < n_order:
                 st.warning(f"Please select {remaining} more condition(s).")
@@ -943,13 +921,13 @@ def app():
             #else:
             #    st.warning(f"Please select {remaining} more condition(s).")
 
-            # --- Split a/b & sort by order ---
+            # separate selected at a and b
             selected_a = sorted([sid for sid in selected_ids if id2opt[sid]["where"] == "a"],
                                 key=lambda s: id2opt[s]["order"])
             selected_b = sorted([sid for sid in selected_ids if id2opt[sid]["where"] == "b"],
                                 key=lambda s: id2opt[s]["order"])
 
-            # --- Inputs for values ---
+            # Input values for selected conditions
             store = st.session_state.setdefault("bvp_store", {})
             cond_spec = {"kind": "bvp", "items": []}
 
@@ -1005,21 +983,13 @@ def app():
                 st.latex(ode_preview)
                 
             if param_values:
-                st.markdown("**Parameters:**")
-                # Tentukan urutan tampilan: pakai urutan simbol dari builder jika ada.
+                st.markdown("**Parameters:**") 
                 names = list(param_order) if param_order else sorted(param_values.keys(), key=str.lower)
-
-                # Bangun pasangan "symbol = value"
                 items = [f"{sp.latex(sp.Symbol(k))} = {fmt_num_ltx(param_values[k], nd=6)}" for k in names]
-
-                # Pecah jadi beberapa baris agar tidak kepanjangan
-                per_row = 4  # ubah ke 3 kalau mau lebih sempit
+                per_row = 4  
                 rows = ["\\,\\;,\\; ".join(items[i:i+per_row]) for i in range(0, len(items), per_row)]
-
-                # Render dalam aligned environment
                 latex_block = r"\begin{aligned}" + r"\\ ".join(rows) + r"\end{aligned}"
                 st.latex(latex_block)
-
 
             st.markdown("**Domain:**")
             st.latex(rf"{indep_name}\in\left[{t0},\,{t1}\right]")
@@ -1032,8 +1002,8 @@ def app():
                 cond_spec_ivp["items"].append({
                     "kind":  "ivp",
                     "order": k,
-                    "t0":    float(t_ic),          # titik awal IC (bisa bukan = domain start)
-                    "value": float(ic_values[k]),  # nilai IC utk turunan ke-k
+                    "t0":    float(t_ic),          
+                    "value": float(ic_values[k]),  
                 })
             st.session_state["cond_spec"] = cond_spec_ivp
         except Exception:
@@ -1093,12 +1063,6 @@ def app():
         ("Radau (implicit, stiff)", "Radau"),
         ("BDF (implicit, stiff)", "BDF"),
         ("LSODA (auto stiff/nonstiff)", "LSODA"),
-    ]
-    BVP_METHODS = [
-        ("solve_bvp (collocation, default)", "solve_bvp"),
-        ("Shooting + solve_ivp (RK45)", "shooting_rk45"),
-        ("Shooting + solve_ivp (Radau)", "shooting_radau"),
-        ("Finite Difference (experimental)", "fdm"),
     ]
 
     if cond_type == "Initial Value Problem (IVP)":
@@ -1264,12 +1228,12 @@ def app():
                     if y0 is None or len(y0) != int_n:
                         st.error(f"Initial conditions must be exactly {int_n} values.")
                     else:
-                        # Bagi titik evaluasi untuk kiri (mundur) dan kanan (maju)
+                        
                         n_left, n_right = _alloc_eval_counts(float(t0), float(t1), float(t_ic), int(method_params.get("n_points")))
                         
                         ivp_kwargs = _ivp_kwargs(method_params)
 
-                        # Integrasi ke kiri (t_ic -> t0), hanya jika t_ic > t0
+                        # Integration to the left (t_ic -> t0), only if t_ic > t0
                         T_left = np.array([])
                         Y_left = None
                         if t_ic > t0 and n_left > 0:
@@ -1286,7 +1250,7 @@ def app():
                             T_left = sol_left.t[::-1]  
                             Y_left = sol_left.y[:, ::-1]
 
-                        # Integrasi ke kanan (t_ic -> t1), hanya jika t_ic < t1
+                        # Integration to the right (t_ic -> t1), only if t_ic < t1
                         T_right = np.array([])
                         Y_right = None
                         if t_ic < t1 and n_right > 0:
@@ -1312,9 +1276,8 @@ def app():
 
                             
                             
-                        # Gabungkan (hindari duplikasi titik t_ic)
+                        # Combine left and right results
                         if T_left.size > 0 and T_right.size > 0:
-                            # buang titik pertama kanan (t_ic) agar tidak dobel
                             T = np.concatenate([T_left, T_right[1:]])
                             Y = np.concatenate([Y_left, Y_right[:, 1:]], axis=1)
                         elif T_left.size > 0:
@@ -1322,7 +1285,6 @@ def app():
                         elif T_right.size > 0:
                             T, Y = T_right, Y_right
                         else:
-                            # Domain degenerat / n_points terlalu kecil
                             st.error("No points to evaluate. Increase evaluation points or adjust domain.")
                             st.stop()
 
@@ -1356,8 +1318,7 @@ def app():
 
                         st.plotly_chart(fig, use_container_width=True)
                         
-
-                        # Tabel ringkas
+                        # Data sample
                         st.markdown("#### Sample of solution values")
                         show_n = min(10, len(T))
                         table = {indep_name: T[:show_n]}
@@ -1373,9 +1334,6 @@ def app():
         elif cond_type == "Boundary Value Problem (BVP)":
             with st.spinner("Processing..."):
                 try:
-                    # ---------------------------
-                    # 1) Ambil & validasi BC dari UI
-                    # ---------------------------
                     cond_spec = st.session_state.get("cond_spec", {})
                     items = cond_spec.get("items", [])
                     int_n = max(1, to_pyint(n_order))
@@ -1387,10 +1345,6 @@ def app():
                         )
                         st.stop()
 
-                    # ---------------------------
-                    # 2) Bangun fungsi g(x, y, y', ..., y^(n-1)) dari input LHS=RHS
-                    #    (mirip build_rhs_from_input, tapi hanya ambil rhs_sub → g_num)
-                    # ---------------------------
                     t = sp.Symbol(indep_name)
                     y_func = sp.Function(dep_name)(t)
 
@@ -1413,10 +1367,9 @@ def app():
                         st.stop()
 
                     highest_der = ders[-1]
-                    n = highest_der.derivative_count  # harus sama dengan int_n
+                    n = highest_der.derivative_count  
 
                     if int(n) != int_n:
-                        # fallback: pakai terdeteksi dari UI builder
                         n = int_n
 
                     sol_list = sp.solve(sp.Eq(left_expr, right_expr), highest_der, dict=True)
@@ -1429,14 +1382,14 @@ def app():
 
                     rhs_expr = sol_list[0][highest_der]
 
-                    # Substitute turunan → simbol Y0..Y{n-1}
+                    
                     Y_syms = [sp.Symbol(f"Y{k}") for k in range(n)]
                     subs_map = {y_func: Y_syms[0]}
                     for k in range(1, n):
                         subs_map[sp.Derivative(y_func, (t, k))] = Y_syms[k]
                     rhs_sub = rhs_expr.subs(subs_map)
 
-                    # Kumpulkan parameter dan validasi nilainya
+                    
                     free_syms = rhs_sub.free_symbols.union(left_expr.free_symbols).union(right_expr.free_symbols)
                     param_syms = sorted([s for s in free_syms if s != t and s not in Y_syms], key=lambda s: s.name)
                     missing = [s.name for s in param_syms if s.name not in param_values]
@@ -1446,22 +1399,13 @@ def app():
 
                     param_vals = [float(param_values[s.name]) for s in param_syms]
 
-                    # Buat fungsi numerik g_num(t, *Y, *params)
                     lamb_args = (t, *Y_syms, *param_syms)
                     g_num = sp.lambdify(lamb_args, rhs_sub, "numpy")
 
-                    # Bungkus ke signature yang diharapkan solver BVP util: g(x, y, y', ...)
+                    
                     def g_for_bvp(x, *Yargs):
                         return g_num(x, *Yargs, *param_vals)
 
-                    # ---------------------------
-                    # 3) Konversi BC dari UI → format util
-                    #    items: [{"kind":"bvp","order":k,"where":"a"/"b","value":val}, ...]
-                    #    util butuh: {"at":"left"/"right","kind":"dirichlet"/"neumann","der":k,"value":val}
-                    #      - k==0 → dirichlet
-                    #      - k==1 → neumann
-                    #      - k>=2 → tetap pakai "dirichlet" dengan der=k (util kami dukung)
-                    # ---------------------------
                     conditions = []
                     for it in items:
                         k = int(it.get("order", 0))
@@ -1473,20 +1417,18 @@ def app():
                         elif k == 1:
                             kind = "neumann"
                         else:
-                            kind = "dirichlet"  # gunakan der=k agar umum
+                            kind = "dirichlet"  
 
                         conditions.append({
                             "at": side,
                             "kind": kind,
-                            "der": k,     # penting: kita kirimkan orde sebenarnya
+                            "der": k,     
                             "value": val,
                         })
-
-                    # ---------------------------
-                    # 4) Jalankan solver BVP
-                    # ---------------------------
+                    
+                    # Solve BVP
                     a, b = float(t0), float(t1)
-                    m_pts   = 400     # jumlah mesh awal
+                    m_pts   = 400     
                     tol_val = 1e-6
                     max_nds = 100000
 
@@ -1495,7 +1437,7 @@ def app():
                         g=g_for_bvp,
                         domain=(a, b),
                         conditions=conditions,
-                        guess_y=None,        # default tebakan nol
+                        guess_y=None,       
                         m=m_pts,
                         tol=tol_val,
                         max_nodes=max_nds
@@ -1508,13 +1450,11 @@ def app():
                         st.error("Solve status: FAILED")
                     st.caption(sol.message)
 
-                    # ---------------------------
-                    # 5) Visualisasi & tabel hasil
-                    # ---------------------------
+                    # Plotting
                     prime_map = ["", "′", "″", "‴"]
 
                     X = sol.x
-                    Y = sol.y  # shape: (n, len(X))
+                    Y = sol.y  
 
                     st.markdown("#### Solution Plot")
                     fig = go.Figure()
