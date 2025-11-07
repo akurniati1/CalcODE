@@ -433,6 +433,14 @@ def solve_bvp_general_dn(order: int,
     sol = solve_bvp(fun, bc, x, Y0, tol=tol, max_nodes=max_nodes)
     return sol
 
+# Validate
+def validate_power_symbol(equation: str, field_name: str):
+    if "^" in equation:
+        st.error(f"Error in {field_name}: The symbol '^' is not supported for exponentiation.")
+        st.warning("Example: Instead of `x^2`, use `x**2`.")
+        return True
+    return False
+
 
 # Streamlit app
 def app():
@@ -535,6 +543,7 @@ def app():
 
         # Validate LHS derivatives
         _lhs = left_side.strip()
+        
 
         if _lhs == "":
             st.error("LHS cannot be blank. Please enter a valid expression.")
@@ -542,6 +551,8 @@ def app():
         if _lhs and re.fullmatch(r"[+\-*/%^()\s\.]+", _lhs):
                 st.error("LHS cannot contain only operators or parentheses.")
                 st.stop()
+        if validate_power_symbol(left_side, "LHS"):
+            st.stop()
         
         # Missing operator detection (e.g., 2t, u'u)
         _func_names = "|".join(map(re.escape, COMMON_FUNCS.keys())) or "___NONE___"
@@ -687,6 +698,8 @@ def app():
         if _rhs and re.fullmatch(r"[+\-*/%^()\s\.]+", _rhs):
                 st.error("RHS cannot contain only operators or parentheses.")
                 st.stop()
+        if validate_power_symbol(right_side, "RHS"):
+            st.stop()
         if _rhs and re.search(missing_op_pattern, _rhs):
             st.error(
                 "It seems there might be missing operators between terms in the RHS. "
